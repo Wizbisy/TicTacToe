@@ -1,0 +1,280 @@
+import React, { useState, useEffect } from 'react'; import { ethers } 
+from 'ethers'; import { Container, Typography, Button, Grid, Paper, 
+Box, CircularProgress, Snackbar, Alert } from '@mui/material'; import 
+{ AccountCircle, SportsEsports } from '@mui/icons-material';
+// Your contract details
+const CONTRACT_ADDRESS = "0x2cc82b175a39c923c30bd564c77506b853bfd22e"; 
+const CONTRACT_ABI = [
+  { "inputs": [], "stateMutability": "nonpayable", "type": 
+    "constructor"
+  },
+  { "anonymous": false, "inputs": [ { "indexed": false, 
+        "internalType": "address", "name": "winner", "type": "address"
+      },
+      { "indexed": false, "internalType": "bool", "name": "isDraw", 
+        "type": "bool"
+      },
+      { "indexed": false, "internalType": "uint256", "name": "prize", 
+        "type": "uint256"
+      }
+    ], "name": "GameEnded", "type": "event"
+  },
+  { "anonymous": false, "inputs": [ { "indexed": false, 
+        "internalType": "address", "name": "playerX", "type": 
+        "address"
+      },
+      { "indexed": false, "internalType": "address", "name": 
+        "playerO", "type": "address"
+      },
+      { "indexed": false, "internalType": "uint256", "name": "stake", 
+        "type": "uint256"
+      }
+    ], "name": "GameStarted", "type": "event"
+  },
+  { "anonymous": false, "inputs": [ { "indexed": false, 
+        "internalType": "address", "name": "player", "type": "address"
+      },
+      { "indexed": false, "internalType": "uint8", "name": "row", 
+        "type": "uint8"
+      },
+      { "indexed": false, "internalType": "uint8", "name": "col", 
+        "type": "uint8"
+      }
+    ], "name": "MoveMade", "type": "event"
+  },
+  { "inputs": [ { "internalType": "uint256", "name": "", "type": 
+        "uint256"
+      },
+      { "internalType": "uint256", "name": "", "type": "uint256"
+      }
+    ], "name": "board", "outputs": [ { "internalType": "enum 
+        TicTacToe.Cell", "name": "", "type": "uint8"
+      }
+    ], "stateMutability": "view", "type": "function"
+  },
+  { "inputs": [], "name": "currentTurn", "outputs": [ { 
+        "internalType": "enum TicTacToe.Turn", "name": "", "type": 
+        "uint8"
+      }
+    ], "stateMutability": "view", "type": "function"
+  },
+  { "inputs": [], "name": "gameState", "outputs": [ { "internalType": 
+        "enum TicTacToe.GameState", "name": "", "type": "uint8"
+      }
+    ], "stateMutability": "view", "type": "function"
+  },
+  { "inputs": [], "name": "getBoard", "outputs": [ { "internalType": 
+        "enum TicTacToe.Cell[3][3]", "name": "", "type": "uint8[3][3]"
+      }
+    ], "stateMutability": "view", "type": "function"
+  },
+  { "inputs": [], "name": "isDraw", "outputs": [ { "internalType": 
+        "bool", "name": "", "type": "bool"
+      }
+    ], "stateMutability": "view", "type": "function"
+  },
+  { "inputs": [], "name": "joinGame", "outputs": [], 
+    "stateMutability": "payable", "type": "function"
+  },
+  { "inputs": [ { "internalType": "uint8", "name": "row", "type": 
+        "uint8"
+      },
+      { "internalType": "uint8", "name": "col", "type": "uint8"
+      }
+    ], "name": "makeMove", "outputs": [], "stateMutability": 
+    "nonpayable", "type": "function"
+  },
+  { "inputs": [], "name": "owner", "outputs": [ { "internalType": 
+        "address", "name": "", "type": "address"
+      }
+    ], "stateMutability": "view", "type": "function"
+  },
+  { "inputs": [], "name": "playerO", "outputs": [ { "internalType": 
+        "address", "name": "", "type": "address"
+      }
+    ], "stateMutability": "view", "type": "function"
+  },
+  { "inputs": [], "name": "playerX", "outputs": [ { "internalType": 
+        "address", "name": "", "type": "address"
+      }
+    ], "stateMutability": "view", "type": "function"
+  },
+  { "inputs": [], "name": "resetGame", "outputs": [], 
+    "stateMutability": "nonpayable", "type": "function"
+  },
+  { "inputs": [], "name": "stakeAmount", "outputs": [ { 
+        "internalType": "uint256", "name": "", "type": "uint256"
+      }
+    ], "stateMutability": "view", "type": "function"
+  },
+  { "inputs": [], "name": "winner", "outputs": [ { "internalType": 
+        "address", "name": "", "type": "address"
+      }
+    ], "stateMutability": "view", "type": "function"
+  }
+]; function App() { const [contract, setContract] = useState(null); 
+  const [account, setAccount] = useState(null); const [board, 
+  setBoard] = useState(Array(3).fill().map(() => Array(3).fill(0))); 
+  const [gameState, setGameState] = useState('waiting'); const 
+  [currentTurn, setCurrentTurn] = useState('X'); const [stakeAmount, 
+  setStakeAmount] = useState('0'); const [loading, setLoading] = 
+  useState(false); const [snackbar, setSnackbar] = useState({ open: 
+  false, message: '', severity: 'info' }); useEffect(() => {
+    const init = async () => { if (window.ethereum) { try { const 
+          provider = new 
+          ethers.providers.Web3Provider(window.ethereum); const signer 
+          = provider.getSigner(); const contract = new 
+          ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer); 
+          setContract(contract);
+          
+          // Get stake amount
+          const stake = await contract.stakeAmount(); 
+          setStakeAmount(ethers.utils.formatEther(stake));
+          
+          // Set up event listeners
+          contract.on("GameStarted", (playerX, playerO, stake) => { 
+            setGameState('playing'); showMessage('Game started!', 
+            'success'); updateGameState();
+          });
+          
+          contract.on("MoveMade", (player, row, col) => { 
+            updateGameState();
+          });
+          
+          contract.on("GameEnded", (winner, isDraw, prize) => { 
+            setGameState('completed'); const message = isDraw ? "Game 
+            ended in a draw!" : `Winner: ${winner.slice(0,6)}...!`; 
+            showMessage(message, isDraw ? 'info' : 'success'); 
+            updateGameState();
+          });
+          // Initial game state update
+          await updateGameState();
+        } catch (error) {
+          showMessage(error.message, 'error');
+        }
+      }
+    };
+    
+    init();
+    
+    return () => { if (contract) { contract.removeAllListeners();
+      }
+    };
+  }, []);
+  const updateGameState = async () => { if (!contract) return;
+    
+    try { const [boardState, currentTurnState, gameStateNum] = await 
+      Promise.all([
+        contract.getBoard(), contract.currentTurn(), 
+        contract.gameState()
+      ]);
+      
+      setBoard(boardState.map(row => row.map(cell => cell === 0 ? 0 : 
+        cell === 1 ? 'X' : 'O')
+      )); setCurrentTurn(currentTurnState === 0 ? 'X' : 'O'); 
+      setGameState(gameStateNum === 0 ? 'waiting' : gameStateNum === 1 
+      ? 'playing' : 'completed');
+    } catch (error) {
+      showMessage(error.message, 'error');
+    }
+  };
+  const connectWallet = async () => { try { const accounts = await 
+      window.ethereum.request({ method: 'eth_requestAccounts' }); 
+      setAccount(accounts[0]); showMessage('Wallet connected!', 
+      'success');
+    } catch (error) {
+      showMessage(error.message, 'error');
+    }
+  };
+  const joinGame = async () => { if (!contract || !account) return;
+    
+    try { setLoading(true); const stake = await 
+      contract.stakeAmount(); const tx = await contract.joinGame({ 
+      value: stake }); await tx.wait(); showMessage('Joined game 
+      successfully!', 'success');
+    } catch (error) {
+      showMessage(error.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+  const makeMove = async (row, col) => { if (!contract || gameState 
+    !== 'playing') return;
+    
+    try { setLoading(true); const tx = await contract.makeMove(row, 
+      col); await tx.wait();
+    } catch (error) {
+      showMessage(error.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+  const showMessage = (message, severity) => { setSnackbar({ open: 
+    true, message, severity });
+  };
+  const handleCloseSnackbar = () => { setSnackbar({ ...snackbar, open: 
+    false });
+  };
+  return ( <Container maxWidth="sm"> <Box sx={{ my: 4, textAlign: 
+      'center' }}>
+        <Typography variant="h3" component="h1" gutterBottom> On-Chain 
+          Tic-Tac-Toe
+        </Typography>
+        
+        {!account ? ( <Button variant="contained" 
+            startIcon={<AccountCircle />} onClick={connectWallet} 
+            size="large"
+          >
+            Connect Wallet </Button> ) : ( <Box sx={{ mb: 3 }}> 
+            <Typography variant="body1">
+              Connected: {account.slice(0,6)}...{account.slice(-4)} 
+            </Typography>
+            
+            {gameState === 'waiting' && ( <Box sx={{ mt: 2 }}> 
+                <Typography variant="h6">Join Game</Typography> 
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  Required Stake: {stakeAmount} ETH </Typography> 
+                <Button
+                  variant="contained" startIcon={<SportsEsports />} 
+                  onClick={joinGame} disabled={loading}
+                >
+                  {loading ? <CircularProgress size={24} /> : 'Join 
+                  Game'}
+                </Button> </Box> )}
+            
+            {gameState === 'playing' && ( <Box sx={{ mt: 2 }}> 
+                <Typography variant="h6">
+                  Current Turn: {currentTurn === 'X' ? 'You (X)' : 
+                  'Opponent (O)'}
+                </Typography> <Grid container spacing={1} sx={{ mt: 2, 
+                mb: 3 }}>
+                  {board.map((row, rowIndex) => ( <Grid container item 
+                    key={rowIndex} justifyContent="center" 
+                    spacing={1}>
+                      {row.map((cell, colIndex) => ( <Grid item 
+                        key={colIndex}>
+                          <Paper elevation={3} sx={{ width: 80, 
+                              height: 80, display: 'flex', alignItems: 
+                              'center', justifyContent: 'center', 
+                              cursor: cell === 0 ? 'pointer' : 
+                              'default', backgroundColor: cell === 0 ? 
+                              '#f5f5f5' : '#e3f2fd'
+                            }}
+                            onClick={() => cell === 0 && 
+                            makeMove(rowIndex, colIndex)}
+                          >
+                            <Typography variant="h4">{cell !== 0 ? 
+                            cell : ''}</Typography>
+                          </Paper> </Grid> ))} </Grid> ))} </Grid> 
+              </Box>
+            )}
+            
+            {gameState === 'completed' && ( <Box sx={{ mt: 2 }}> 
+                <Button
+                  variant="outlined" onClick={() => 
+                  window.location.reload()}
+                >
+                  Play Again </Button> </Box> )} </Box> )} </Box>
+      
+      <Snackbar open={snackbar.open} autoHideDuration={6000} 
+        onClose={han
