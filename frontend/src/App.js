@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
-import { CONTRACT_ADDRESS, CONTRACT_ABI, getProvider } from './contract';
+import { CONTRACT_ADDRESS, CONTRACT_ABI, getProvider } from './contract.js';
 import './styles.css';
 
 export default function App() {
